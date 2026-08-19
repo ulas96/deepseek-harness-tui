@@ -1,0 +1,33 @@
+[package]
+name = "tub"
+description = "Interactive Rust terminal UI (TUI) client for DeepSeek Harness"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "tub"
+path = "src/main.rs"
+
+[[bin]]
+name = "tub-fake-runtime"
+path = "src/bin/tub-fake-runtime.rs"
+
+[dependencies]
+dsh-harness-client = { path = "../dsh-harness-client" }
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+uuid.workspace = true
+clap = { version = "4", features = ["derive", "env"] }
+ratatui = { version = "0.30", features = ["crossterm"] }
+crossterm = "0.29"
+unicode-width = "0.2"
+tui-markdown = "0.3"
+
+[dev-dependencies]
+tempfile = "3"
