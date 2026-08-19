@@ -23,7 +23,7 @@ cargo install --path crates/tub         # install the `tub` binary
 
 CI runs `cargo fmt --all -- --check` and `cargo test --workspace` on Ubuntu. There is no rustfmt.toml/clippy.toml, so use the standard `cargo fmt` / `cargo clippy` conventions.
 
-Running the binary requires a DeepSeek Harness checkout with `pnpm install` done (`--checkout` flag / `TUB_CHECKOUT` env) since v1 launches the runtime from source or built lib, not a packaged executable.
+Running the binary requires a DeepSeek Harness checkout with `pnpm install` done since v1 launches the runtime from source or built lib, not a packaged executable. Explicit `--checkout`/`TUB_CHECKOUT` settings win; otherwise tub searches the current directory tree and common home-directory locations. The runtime config is embedded as the final fallback, and a supported Node is selected from PATH, NVM, or Homebrew (`TUB_NODE` overrides it).
 
 ## Workspace layout
 

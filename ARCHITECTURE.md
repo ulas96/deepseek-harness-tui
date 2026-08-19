@@ -15,6 +15,10 @@ source mode boots 'packages/examples/jsonrpc-demo/src/bin.ts' through the tsx lo
 under plain Node. The config path is passed positionally (argv[2]); the runtime's own discovery still applies
 ('DSH_CORDIS_CONFIG' env wins - the keyless tests exploit exactly that).
 
+For an unconfigured `tub` invocation, the checkout is discovered from the current directory tree or common
+home-directory locations, the bundled runtime composition is materialized from the binary, and a supported Node is
+selected from PATH, NVM, or Homebrew. Explicit CLI and environment configuration always has precedence.
+
 The child environment is the parent environment verbatim plus mode-specific entries: tub's credential policy is
 pass-through, so DEEPSEEK_API_KEY / DEEPSEEK_BASE_URL reach the runtime. stdout stays reserved for JSON-RPC frames -
 tub's shipped cordis.yml mounts no stdout logger, and the client records non-JSON stdout lines as protocol

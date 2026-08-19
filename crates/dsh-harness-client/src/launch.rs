@@ -7,7 +7,9 @@
 //! first, else positional argv[2]; no default, no fallback. tub passes its
 //! config path positionally.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 /// Which artifact the runtime bin is booted from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -63,8 +65,9 @@ pub fn resolve_launch(checkout: &Path, mode: RuntimeMode) -> Result<ResolvedLaun
                     loader.display()
                 ));
             }
+            let node = node_command()?;
             Ok(ResolvedLaunch {
-                command: "node".to_string(),
+                command: node,
                 args: vec![
                     "--import".to_string(),
                     loader.to_string_lossy().to_string(),
@@ -83,8 +86,9 @@ pub fn resolve_launch(checkout: &Path, mode: RuntimeMode) -> Result<ResolvedLaun
                     lib_bin.display()
                 ));
             }
+            let node = node_command()?;
             Ok(ResolvedLaunch {
-                command: "node".to_string(),
+                command: node,
                 args: vec![lib_bin.to_string_lossy().to_string()],
                 env: Vec::new(),
             })
@@ -92,9 +96,100 @@ pub fn resolve_launch(checkout: &Path, mode: RuntimeMode) -> Result<ResolvedLaun
     }
 }
 
-/// The Node executable, when discoverable on PATH.
-pub fn node_command() -> String {
-    "node".to_string()
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct NodeVersion {
+    major: u64,
+    minor: u64,
+    patch: u64,
+}
+
+impl NodeVersion {
+    fn parse(raw: &str) -> Option<Self> {
+        let mut parts = raw.trim().trim_start_matches('v').split('.');
+        Some(Self {
+            major: numeric_prefix(parts.next()?)?,
+            minor: numeric_prefix(parts.next()?)?,
+            patch: numeric_prefix(parts.next().unwrap_or("0"))?,
+        })
+    }
+
+    fn is_supported(self) -> bool {
+        (self.major == 22 && self.minor >= 19) || self.major >= 24
+    }
+}
+
+fn numeric_prefix(raw: &str) -> Option<u64> {
+    let digits: String = raw.chars().take_while(char::is_ascii_digit).collect();
+    (!digits.is_empty()).then(|| digits.parse().ok()).flatten()
+}
+
+fn command_node_version(command: &str) -> Option<NodeVersion> {
+    let output = Command::new(command).arg("--version").output().ok()?;
+    output
+        .status
+        .success()
+        .then(|| NodeVersion::parse(&String::from_utf8_lossy(&output.stdout)))
+        .flatten()
+}
+
+/// Resolve a supported Node executable. The shell's `node` wins when it is
+/// supported; otherwise tub searches installed NVM and Homebrew Node versions.
+/// `TUB_NODE` is an explicit override and is validated rather than silently
+/// falling back.
+pub fn node_command() -> Result<String, String> {
+    if let Some(explicit) = std::env::var_os("TUB_NODE") {
+        let explicit = explicit.to_string_lossy().to_string();
+        return supported_node(&explicit).map(|_| explicit).ok_or_else(|| {
+            "TUB_NODE does not point to a supported Node runtime (need ^22.19 or >=24)".to_string()
+        });
+    }
+
+    if supported_node("node").is_some() {
+        return Ok("node".to_string());
+    }
+
+    let mut candidates = Vec::new();
+    if let Some(nvm_bin) = std::env::var_os("NVM_BIN") {
+        candidates.push(PathBuf::from(nvm_bin).join("node"));
+    }
+
+    let nvm_dir = std::env::var_os("NVM_DIR")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".nvm")));
+    if let Some(nvm_dir) = nvm_dir {
+        let versions = nvm_dir.join("versions/node");
+        if let Ok(entries) = std::fs::read_dir(versions) {
+            candidates.extend(entries.flatten().map(|entry| entry.path().join("bin/node")));
+        }
+    }
+
+    candidates.extend([
+        PathBuf::from("/opt/homebrew/opt/node@24/bin/node"),
+        PathBuf::from("/usr/local/opt/node@24/bin/node"),
+    ]);
+
+    let mut seen = HashSet::new();
+    let mut supported: Vec<(NodeVersion, String)> = candidates
+        .into_iter()
+        .filter(|path| path.is_file() && seen.insert(path.clone()))
+        .filter_map(|path| {
+            let command = path.to_string_lossy().to_string();
+            supported_node(&command).map(|version| (version, command))
+        })
+        .collect();
+    supported.sort_by(|left, right| right.0.cmp(&left.0));
+    supported
+        .into_iter()
+        .next()
+        .map(|(_, command)| command)
+        .ok_or_else(|| {
+            "no supported Node runtime found (need ^22.19 or >=24); install Node 24 or set TUB_NODE"
+                .to_string()
+        })
+}
+
+fn supported_node(command: &str) -> Option<NodeVersion> {
+    command_node_version(command).filter(|version| version.is_supported())
 }
 
 /// Resolve a path to absolute, failing when it does not exist.
@@ -104,4 +199,30 @@ pub fn require_absolute(path: &Path) -> Result<PathBuf, String> {
         return Err(format!("path does not exist: {}", absolute.display()));
     }
     Ok(absolute)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn node_version_support_matches_harness_requirement() {
+        assert!(!NodeVersion::parse("v22.18.0").unwrap().is_supported());
+        assert!(NodeVersion::parse("v22.19.0").unwrap().is_supported());
+        assert!(!NodeVersion::parse("v23.11.0").unwrap().is_supported());
+        assert!(NodeVersion::parse("v24.0.1").unwrap().is_supported());
+        assert!(NodeVersion::parse("v25.2.0").unwrap().is_supported());
+    }
+
+    #[test]
+    fn node_version_parser_accepts_prerelease_suffixes() {
+        assert_eq!(
+            NodeVersion::parse("v24.1.2-nightly"),
+            Some(NodeVersion {
+                major: 24,
+                minor: 1,
+                patch: 2,
+            })
+        );
+    }
 }

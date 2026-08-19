@@ -27,14 +27,17 @@ pub enum Command {
 /// Options shared by the headless runner and the TUI.
 #[derive(Debug, Clone, Args)]
 pub struct SharedArgs {
-    /// Path to a DeepSeek Harness checkout (required; src mode needs its
-    /// node_modules, lib mode its built lib). Env: TUB_CHECKOUT, DSH_CHECKOUT.
+    /// Path to a DeepSeek Harness checkout. When omitted, tub searches the
+    /// current directory tree and common locations under the home directory.
+    /// Src mode needs node_modules; lib mode needs the built lib. Env:
+    /// TUB_CHECKOUT, DSH_CHECKOUT.
     #[arg(long, env = "TUB_CHECKOUT")]
     pub checkout: Option<PathBuf>,
 
     /// The runtime cordis.yml path (positional argv[2] for the runtime; its
     /// own DSH_CORDIS_CONFIG env wins when set). Default: TUB_CORDIS_CONFIG,
-    /// then ./cordis.yml, then the cordis.yml shipped beside the binary.
+    /// then DSH_CORDIS_CONFIG, ./cordis.yml, a file beside the binary, then
+    /// tub's embedded default.
     #[arg(long, env = "TUB_CORDIS_CONFIG")]
     pub config: Option<PathBuf>,
 

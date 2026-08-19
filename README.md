@@ -40,8 +40,8 @@ provider/model + workspace/branch, scrollback, and multiple sessions on one conn
 ## Prerequisites
 
 - Rust (stable toolchain)
-- Node ^22.19 or >=24, and a DeepSeek Harness checkout with 'pnpm install' (v1 launches the runtime from a checkout;
-  a packaged single-executable runtime is documented future work)
+- Node ^22.19 or >=24, and a DeepSeek Harness checkout with 'pnpm install'. tub uses a supported `node` on PATH or
+  automatically selects one installed by NVM/Homebrew; `TUB_NODE` can override the executable.
 - DEEPSEEK_API_KEY (and optionally DEEPSEEK_BASE_URL) in the environment for live runs - tub passes the parent
   environment through to the runtime verbatim
 - Keyless runs (no key, no network) work through the harness's llm-replay snapshot overlay
@@ -66,17 +66,19 @@ Configuration (CLI flags win over env):
 
 | Flag | Env | Default | Meaning |
 |---|---|---|---|
-| --checkout | TUB_CHECKOUT, DSH_CHECKOUT | required | DeepSeek Harness checkout path |
-| --config | TUB_CORDIS_CONFIG | ./cordis.yml, else the shipped one | runtime cordis.yml (tub ships one modeled on examples/jsonrpc-agent/cordis.yml) |
+| --checkout | TUB_CHECKOUT, DSH_CHECKOUT | auto-detected | DeepSeek Harness checkout path; searches the current tree and common home-directory locations |
+| --config | TUB_CORDIS_CONFIG, DSH_CORDIS_CONFIG | ./cordis.yml, else embedded | runtime cordis.yml (tub embeds one modeled on examples/jsonrpc-agent/cordis.yml) |
+| — | TUB_NODE | supported PATH/NVM/Homebrew Node | explicit Node executable override |
 | --runtime-mode | DSH_EXAMPLE_MODE | src | 'src' boots the jsonrpc-demo bin through tsx; 'lib' boots its built lib |
 | --provider | TUB_PROVIDER | deepseek-official | provider route for SDK-created agents |
 | --model | TUB_MODEL | deepseek-v4-flash | model for SDK-created agents |
 | --max-tokens | TUB_MAX_TOKENS | unset (adapter default) | output-token cap per request |
 | --cwd | TUB_CWD | current directory | workspace recorded on every SDK-created session |
 
-The runtime's own config discovery still applies inside the child: DSH_CORDIS_CONFIG env wins over the positional
-config path tub passes. Credentials (DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL) reach the child through tub's
-parent-environment pass-through.
+With a checkout in a common location such as `~/Documents/Github/deepseek-harness`, an installed binary starts with
+just `tub`; no checkout or config exports are required. Explicit flags and environment variables always win, and an
+invalid explicit path fails instead of silently falling back. Credentials (DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL)
+reach the child through tub's parent-environment pass-through.
 
 ### TUI keys
 
