@@ -17,10 +17,14 @@ use std::time::Duration;
 use serde_json::{json, Value};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, Command};
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, Mutex as AsyncMutex};
 
 use crate::error::{Error, TransportClosedError, WireError};
-use crate::protocol::{HarnessNotification, InitializeParams, InitializeResult};
+use crate::protocol::{
+    HarnessNotification, InitializeParams, InitializeResult, ModelCatalogResult, ModelSelection,
+    ProviderAddResult, ProviderDiscoverResult, ProviderDraft, SelectModelResult, SessionListResult,
+    SessionResumeResult,
+};
 use crate::session::ContentBlock;
 
 /// Retained stderr lines used to diagnose an unexpected runtime death.
@@ -28,6 +32,11 @@ const STDERR_TAIL_LIMIT: usize = 400;
 
 /// Poll interval while waiting out a teardown grace.
 const EXIT_POLL_MS: u64 = 50;
+
+/// Default bound for the extended interactive-management RPCs (model/
+/// provider catalog, selection, resume, discovery/add) when the caller
+/// hasn't configured a stricter `request_timeout_ms`. See `typed_request`.
+const MANAGEMENT_REQUEST_TIMEOUT_MS: u64 = 20_000;
 
 /// Launch and timeout options for HarnessClient.
 #[derive(Debug, Clone)]
@@ -77,7 +86,10 @@ struct Subscription {
 /// Shared client state reachable from the reader/reaper tasks, the request
 /// path, and the subscription streams.
 struct Inner {
-    stdin: Mutex<Option<ChildStdin>>,
+    // tokio::sync::Mutex (not std): write_frame holds this guard across the
+    // stdin write/flush .await points, which requires an async-aware guard
+    // to keep the enclosing future Send (needed for tokio::spawn callers).
+    stdin: AsyncMutex<Option<ChildStdin>>,
     child: Mutex<Option<Child>>,
     /// Process id captured at spawn (kills must happen before the reaper reaps).
     pid: Mutex<Option<u32>>,
@@ -187,7 +199,7 @@ impl Inner {
     }
 
     async fn write_frame(&self, frame: &Value) -> Result<(), Error> {
-        let mut stdin = self.stdin.lock().unwrap();
+        let mut stdin = self.stdin.lock().await;
         let Some(stdin) = stdin.as_mut() else {
             return Err(Error::TransportClosed(self.current_closed_error()));
         };
@@ -332,6 +344,13 @@ async fn settle_then_fail(inner: &Arc<Inner>) {
 /// The subprocess starts lazily on the first request and is owned by this
 /// instance until close. There is no wire-level cancel: a timed-out request
 /// stays running server-side until the runtime is closed.
+///
+/// Clone shares the same underlying runtime (`Arc<Inner>`) once started, so a
+/// cloned handle can issue requests concurrently with the original — the
+/// request/response and notification paths are already `Arc`+`Mutex`-backed
+/// internally. Reuse refusal after `close()` is still enforced through the
+/// shared `Inner::closed` flag even though `closed` here is per-handle.
+#[derive(Clone)]
 pub struct HarnessClient {
     options: HarnessClientOptions,
     inner: Option<Arc<Inner>>,
@@ -389,7 +408,7 @@ impl HarnessClient {
         let stdin = child.stdin.take().expect("stdin piped");
         let pid = child.id();
         let inner = Arc::new(Inner {
-            stdin: Mutex::new(Some(stdin)),
+            stdin: AsyncMutex::new(Some(stdin)),
             child: Mutex::new(Some(child)),
             pid: Mutex::new(pid),
             pending: Mutex::new(HashMap::new()),
@@ -434,11 +453,95 @@ impl HarnessClient {
         let version = info.get("version").and_then(Value::as_str).ok_or_else(|| {
             Error::Protocol(format!("initialize returned no server version: {result}"))
         })?;
+        let capabilities = result
+            .get("capabilities")
+            .and_then(Value::as_array)
+            .map(|values| {
+                values
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default();
         Ok(InitializeResult {
             server_info: crate::protocol::ServerInfo {
                 name: name.to_string(),
                 version: version.to_string(),
             },
+            capabilities,
+        })
+    }
+
+    /// Read all active and configurable provider/model routes.
+    pub async fn model_catalog(&mut self) -> Result<ModelCatalogResult, Error> {
+        self.typed_request("model/catalog", json!({})).await
+    }
+
+    /// Change the route used by a session's next model step.
+    pub async fn select_model(
+        &mut self,
+        session_id: &str,
+        selection: &ModelSelection,
+    ) -> Result<SelectModelResult, Error> {
+        let mut params = serde_json::to_value(selection).expect("serializable model selection");
+        params["sessionId"] = json!(session_id);
+        self.typed_request("session/select-model", params).await
+    }
+
+    /// List resumable root conversations for the initialized workspace.
+    pub async fn list_sessions(&mut self) -> Result<SessionListResult, Error> {
+        self.typed_request("session/list", json!({})).await
+    }
+
+    /// Adopt one persisted conversation and return its complete history.
+    pub async fn resume_session(&mut self, session_id: &str) -> Result<SessionResumeResult, Error> {
+        self.typed_request("session/resume", json!({ "sessionId": session_id }))
+            .await
+    }
+
+    /// Probe a catalog provider or custom OpenAI-compatible endpoint.
+    pub async fn discover_provider(
+        &mut self,
+        draft: &ProviderDraft,
+    ) -> Result<ProviderDiscoverResult, Error> {
+        self.typed_request(
+            "provider/discover",
+            serde_json::to_value(draft).expect("serializable provider draft"),
+        )
+        .await
+    }
+
+    /// Persist a provider profile and optional credential.
+    pub async fn add_provider(
+        &mut self,
+        draft: &ProviderDraft,
+    ) -> Result<ProviderAddResult, Error> {
+        self.typed_request(
+            "provider/add",
+            serde_json::to_value(draft).expect("serializable provider draft"),
+        )
+        .await
+    }
+
+    async fn typed_request<T: serde::de::DeserializeOwned>(
+        &mut self,
+        method: &str,
+        params: Value,
+    ) -> Result<T, Error> {
+        // Unlike session/prompt (a fire-and-forget ack; a turn can legitimately
+        // run long after it), these are user-triggered from slash commands
+        // inside the single-threaded TUI loop and must never block it forever
+        // if the runtime or a probed provider endpoint hangs.
+        let timeout_ms = self
+            .options
+            .request_timeout_ms
+            .or(Some(MANAGEMENT_REQUEST_TIMEOUT_MS));
+        let result = self.request(method, params, timeout_ms).await?;
+        serde_json::from_value(result.clone()).map_err(|error| {
+            Error::Protocol(format!(
+                "{method} returned malformed result ({error}): {result}"
+            ))
         })
     }
 
@@ -574,7 +677,7 @@ impl HarnessClient {
                 .await;
         }
         // 2. Close stdin (EOF) and allow cooperative quiesce.
-        inner.stdin.lock().unwrap().take();
+        inner.stdin.lock().await.take();
         if wait_for_exit(&inner, self.options.dispose_eof_grace_ms).await {
             finish_close(&inner);
             return Ok(());
@@ -840,7 +943,7 @@ mod tests {
     #[test]
     fn lineage_scoping_walks_parent_chain() {
         let inner = Inner {
-            stdin: Mutex::new(None),
+            stdin: AsyncMutex::new(None),
             child: Mutex::new(None),
             pid: Mutex::new(None),
             pending: Mutex::new(HashMap::new()),
