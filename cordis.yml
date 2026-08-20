@@ -1,4 +1,4 @@
-# tub's shipped runtime composition, modeled on the DeepSeek Harness
+# theus's shipped runtime composition, modeled on the DeepSeek Harness
 # examples/jsonrpc-agent/cordis.yml. The runtime subprocess serves SDK clients
 # over newline-delimited JSON-RPC on stdio.
 # stdout is reserved for JSON-RPC; do not add a console logger or terminal UI.

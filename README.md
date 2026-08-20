@@ -1,15 +1,15 @@
-# tub
+# theus
 
-**tub** is an interactive Rust terminal client for [DeepSeek Harness](https://github.com/deepseek-harness/deepseek-harness).
+**theus** is an interactive Rust terminal client for [DeepSeek Harness](https://github.com/deepseek-harness/deepseek-harness).
 It spawns a harness SDK runtime as a subprocess, drives it over the JSON-RPC stdio protocol, renders live session activity
 (streaming assistant text, tool calls, diffs, subagents, todos) in your terminal, and owns the runtime lifecycle:
 spawn -> initialize -> prompt -> collect-to-idle -> shutdown -> reap.
 
 This is a new product frontend for DeepSeek Harness, complementary to the Web GUI, ACP, JSON-RPC, and one-shot CLI
-entry points. It exists because the harness removed its TypeScript TUI; tub deliberately satisfies the four conditions
+entry points. It exists because the harness removed its TypeScript TUI; theus deliberately satisfies the four conditions
 for reintroducing a terminal frontend (see ARCHITECTURE.md for the mapping):
 
-1. a named product or deployment - **tub**,
+1. a named product or deployment - **theus**,
 2. an explicit package boundary - a separate Rust repository (never a 'packages/' entry),
 3. a concrete interaction provider - the SDK JSON-RPC stdio protocol (ACP delivers committed final text only;
    the SDK protocol streams full session-log envelopes),
@@ -18,19 +18,19 @@ for reintroducing a terminal frontend (see ARCHITECTURE.md for the mapping):
 ## Demo
 
 ```
-$ tub run --checkout ~/deepseek-harness --prompt "say hi"
--- tub - session-2f1a - deepseek-official/deepseek-v4-flash - /Users/you/project --
+$ theus run --checkout ~/deepseek-harness --prompt "say hi"
+-- theus - session-2f1a - deepseek-official/deepseek-v4-flash - /Users/you/project --
 >> running
 -- turn 1 --
 you: say hi
 assistant (turn 1, step 1):
-  Hello! I'm tub's runtime assistant.
+  Hello! I'm theus's runtime assistant.
   [usage in=1769 out=24]
 -- turn 1: completed
 >> idle
 ----
-final response: Hello! I'm tub's runtime assistant.
-tub: turn took 2.3s
+final response: Hello! I'm theus's runtime assistant.
+theus: turn took 2.3s
 ```
 
 The interactive TUI renders the same turn live: streamed assistant text (markdown once committed), tool cards with
@@ -40,9 +40,9 @@ provider/model/effort + workspace/branch, scrollback, and multiple sessions on o
 ## Prerequisites
 
 - Rust (stable toolchain)
-- Node ^22.19 or >=24, and a DeepSeek Harness checkout with 'pnpm install'. tub uses a supported `node` on PATH or
-  automatically selects one installed by NVM/Homebrew; `TUB_NODE` can override the executable.
-- DEEPSEEK_API_KEY (and optionally DEEPSEEK_BASE_URL) in the environment for live runs - tub passes the parent
+- Node ^22.19 or >=24, and a DeepSeek Harness checkout with 'pnpm install'. theus uses a supported `node` on PATH or
+  automatically selects one installed by NVM/Homebrew; `THEUS_NODE` can override the executable.
+- DEEPSEEK_API_KEY (and optionally DEEPSEEK_BASE_URL) in the environment for live runs - theus passes the parent
   environment through to the runtime verbatim
 - Keyless runs (no key, no network) work through the harness's llm-replay snapshot overlay
 
@@ -50,35 +50,35 @@ provider/model/effort + workspace/branch, scrollback, and multiple sessions on o
 
 ```sh
 cargo build --release           # from this repository root
-cargo install --path crates/tub # installs the tub binary
+cargo install --path crates/theus # installs the theus binary
 ```
 
 ## Usage
 
 ```sh
-tub                              # interactive TUI (default)
-tub tui --checkout ~/deepseek-harness
-tub run --prompt "say hi"        # one headless turn
-tub run --file prompt.md --session my-session --json
+theus                              # interactive TUI (default)
+theus tui --checkout ~/deepseek-harness
+theus run --prompt "say hi"        # one headless turn
+theus run --file prompt.md --session my-session --json
 ```
 
 Configuration (CLI flags win over env):
 
 | Flag | Env | Default | Meaning |
 |---|---|---|---|
-| --checkout | TUB_CHECKOUT, DSH_CHECKOUT | auto-detected | DeepSeek Harness checkout path; searches the current tree and common home-directory locations |
-| --config | TUB_CORDIS_CONFIG, DSH_CORDIS_CONFIG | ./cordis.yml, else embedded | runtime cordis.yml (tub embeds one modeled on examples/jsonrpc-agent/cordis.yml) |
-| — | TUB_NODE | supported PATH/NVM/Homebrew Node | explicit Node executable override |
+| --checkout | THEUS_CHECKOUT, DSH_CHECKOUT | auto-detected | DeepSeek Harness checkout path; searches the current tree and common home-directory locations |
+| --config | THEUS_CORDIS_CONFIG, DSH_CORDIS_CONFIG | ./cordis.yml, else embedded | runtime cordis.yml (theus embeds one modeled on examples/jsonrpc-agent/cordis.yml) |
+| — | THEUS_NODE | supported PATH/NVM/Homebrew Node | explicit Node executable override |
 | --runtime-mode | DSH_EXAMPLE_MODE | src | 'src' boots the jsonrpc-demo bin through tsx; 'lib' boots its built lib |
-| --provider | TUB_PROVIDER | deepseek-official | provider route for SDK-created agents |
-| --model | TUB_MODEL | deepseek-v4-flash | model for SDK-created agents |
-| --max-tokens | TUB_MAX_TOKENS | unset (adapter default) | output-token cap per request |
-| --cwd | TUB_CWD | current directory | workspace recorded on every SDK-created session |
+| --provider | THEUS_PROVIDER | deepseek-official | provider route for SDK-created agents |
+| --model | THEUS_MODEL | deepseek-v4-flash | model for SDK-created agents |
+| --max-tokens | THEUS_MAX_TOKENS | unset (adapter default) | output-token cap per request |
+| --cwd | THEUS_CWD | current directory | workspace recorded on every SDK-created session |
 
 With a checkout in a common location such as `~/Documents/Github/deepseek-harness`, an installed binary starts with
-just `tub`; no checkout or config exports are required. Explicit flags and environment variables always win, and an
+just `theus`; no checkout or config exports are required. Explicit flags and environment variables always win, and an
 invalid explicit path fails instead of silently falling back. Credentials (DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL)
-reach the child through tub's parent-environment pass-through.
+reach the child through theus's parent-environment pass-through.
 
 ### TUI keys
 
@@ -123,7 +123,7 @@ The M1 integration test drives the REAL jsonrpc runtime from a checkout through 
 clean exit-0 shutdown. It self-skips without DSH_CHECKOUT:
 
 ```sh
-DSH_CHECKOUT=~/deepseek-harness cargo test -p tub --test keyless -- --include-ignored
+DSH_CHECKOUT=~/deepseek-harness cargo test -p theus --test keyless -- --include-ignored
 ```
 
 The M2/M3 snapshot suite drives a scripted fake runtime through the real client + transport stack and pins ratatui
@@ -135,8 +135,8 @@ TestBackend frames (streaming text, tool cards with timing, diff cards, subagent
 - **Provider profiles are add-only in v1** - `/provider` can add catalog and custom OpenAI-compatible routes, but editing
   and removing existing profiles still belongs to the Harness settings surface.
 - **No prompt-level status** - the wire has no per-prompt result; model errors and token-limit outcomes are rendered
-  from the event stream, and tub's exit codes reflect transport health only.
-- **stdout is the protocol** - the runtime's stdout carries only JSON-RPC frames. tub fails loudly on non-JSON stdout lines.
+  from the event stream, and theus's exit codes reflect transport health only.
+- **stdout is the protocol** - the runtime's stdout carries only JSON-RPC frames. theus fails loudly on non-JSON stdout lines.
 - **v1 needs a checkout** - the runtime launches from a DeepSeek Harness checkout (src or built lib mode). The packaged
   single-executable runtime is the documented production path.
 

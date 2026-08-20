@@ -1,6 +1,6 @@
 //! fake-runtime: a scripted DeepSeek Harness SDK JSON-RPC stdio peer for
 //! keyless tests. Exposed as a library module so test binaries in other
-//! crates (tub) can run it inside their own bins.
+//! crates (theus) can run it inside their own bins.
 //! keyless tests (the Rust port of the TS client's fake-runtime.ts pattern).
 //!
 //! It reads one compact JSON frame per line on stdin and answers from a

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-**tub** is a Rust terminal UI (TUI) client for [DeepSeek Harness](https://github.com/deepseek-harness/deepseek-harness). It spawns a harness SDK runtime as a subprocess, drives it over the SDK's newline-delimited JSON-RPC stdio protocol, and renders live streaming session activity (assistant text, tool calls, diffs, subagents, todos) in the terminal. It is a standalone repository — never add Rust code inside the deepseek-harness monorepo itself, and tub never runs the harness's own test suite (it's a consumer, not the monorepo).
+**theus** is a Rust terminal UI (TUI) client for [DeepSeek Harness](https://github.com/deepseek-harness/deepseek-harness). It spawns a harness SDK runtime as a subprocess, drives it over the SDK's newline-delimited JSON-RPC stdio protocol, and renders live streaming session activity (assistant text, tool calls, diffs, subagents, todos) in the terminal. It is a standalone repository — never add Rust code inside the deepseek-harness monorepo itself, and theus never runs the harness's own test suite (it's a consumer, not the monorepo).
 
 Full protocol/design rationale lives in `ARCHITECTURE.md` and `README.md` — read those before making protocol or lifecycle changes; this file only covers what a coding agent needs operationally.
 
@@ -13,24 +13,24 @@ Full protocol/design rationale lives in `ARCHITECTURE.md` and `README.md` — re
 ```sh
 cargo build --workspace                 # build everything
 cargo test --workspace                  # unit + fake-runtime + snapshot tests (keyless, no network, always run)
-cargo test -p tub <test_name>           # run a single test by name
+cargo test -p theus <test_name>           # run a single test by name
 cargo test -p dsh-harness-client <name>
-DSH_CHECKOUT=~/deepseek-harness cargo test -p tub --test keyless -- --include-ignored
+DSH_CHECKOUT=~/deepseek-harness cargo test -p theus --test keyless -- --include-ignored
                                          # M1: drives the REAL jsonrpc runtime from a harness checkout via
                                          # llm-replay overlay; self-skips (ignored) without DSH_CHECKOUT
-cargo install --path crates/tub         # install the `tub` binary
+cargo install --path crates/theus         # install the `theus` binary
 ```
 
 CI runs `cargo fmt --all -- --check` and `cargo test --workspace` on Ubuntu. There is no rustfmt.toml/clippy.toml, so use the standard `cargo fmt` / `cargo clippy` conventions.
 
-Running the binary requires a DeepSeek Harness checkout with `pnpm install` done since v1 launches the runtime from source or built lib, not a packaged executable. Explicit `--checkout`/`TUB_CHECKOUT` settings win; otherwise tub searches the current directory tree and common home-directory locations. The runtime config is embedded as the final fallback, and a supported Node is selected from PATH, NVM, or Homebrew (`TUB_NODE` overrides it).
+Running the binary requires a DeepSeek Harness checkout with `pnpm install` done since v1 launches the runtime from source or built lib, not a packaged executable. Explicit `--checkout`/`THEUS_CHECKOUT` settings win; otherwise theus searches the current directory tree and common home-directory locations. The runtime config is embedded as the final fallback, and a supported Node is selected from PATH, NVM, or Homebrew (`THEUS_NODE` overrides it).
 
 ## Workspace layout
 
 Two crates:
 
 - **`crates/dsh-harness-client`** — protocol client library, zero UI dependencies. The Rust design twin of the harness's TypeScript `@deepseek-ai/dsh-sdk-client` and the Python SDK: same runtime peer, same wire, same layering.
-- **`crates/tub`** — the ratatui application (lib + bin `tub`, plus a second bin `tub-fake-runtime` used by tests).
+- **`crates/theus`** — the ratatui application (lib + bin `theus`, plus a second bin `theus-fake-runtime` used by tests).
 
 ### `dsh-harness-client` internals (in dependency order)
 
@@ -42,11 +42,11 @@ Two crates:
 - `launch` — checkout-aware launch-spec resolution (src mode via tsx, lib mode via plain Node).
 - `fake_runtime` — a scripted JSON-RPC stdio peer for keyless tests (Rust port of the TS client's `fake-runtime.ts`): per-method scripted handlers, error/hang/exit behaviors, EOF/SIGTERM stubbornness flags for ladder coverage. Exposed as bin `fake-runtime` too.
 
-### `tub` internals
+### `theus` internals
 
-- `cli` — clap surface (`tub run`, `tub tui`, bare `tub` defaults to the TUI).
+- `cli` — clap surface (`theus run`, `theus tui`, bare `theus` defaults to the TUI).
 - `config` — runtime configuration resolution (checkout, cordis.yml, launch mode, provider/model route, cwd), fails loudly on missing config.
-- `headless` — `tub run`: one turn through the owned interval with a live transcript printer.
+- `headless` — `theus run`: one turn through the owned interval with a live transcript printer.
 - `eventmap` — the **pure** event-to-UI fold: every transcript item is a function of the event stream. Streaming assistant text accumulates per (turn, step) until the committed `assistant/message` replaces it; tool cards open on `tool/call` and close on `tool/result` with elapsed timing; diff cards come from `tool/result` meta; subagent cards from `subagent.started`/`finished`; todo snapshots replace previous snapshots.
 - `ui` — ratatui rendering: transcript windowing (unicode-width wrapping + scroll), status bar (session id, running/idle, provider/model, cwd@branch, elapsed, queued badge), input pane. Pure function of `UiState`, which is what makes `TestBackend` frame snapshots possible.
 - `markdown` — pulldown-cmark via `tui-markdown` for committed assistant text. **Never regex-based markup parsing** — this was an explicit lesson carried from the harness's archived TypeScript TUI (see below).
@@ -68,11 +68,11 @@ These are load-bearing design decisions, not incidental implementation details �
 Three tiers, named in `ARCHITECTURE.md`:
 
 - **M0 (unit)** — `dsh-harness-client/tests/m0.rs` against the fake runtime: handshake, enqueue receipt, notification fan-out, error mapping, timeout abandonment, all three teardown-ladder tiers, stdin-EOF disposal, reuse refusal.
-- **M1 (integration)** — `tub/tests/keyless.rs`, `#[ignore]`d by default, self-skips without `DSH_CHECKOUT`. Drives the **real** jsonrpc runtime from a harness checkout through the llm-replay overlay (mirrors `examples/jsonrpc-agent/tests/sdk.snapshot.ts` in the harness repo) and pins transcript, persisted JSONL, clean exit-0 shutdown. Run explicitly with `--include-ignored` when a checkout is available.
-- **M2/M3 (snapshots)** — `tub/tests/snapshots.rs`: a scripted fake runtime drives the real client + transport stack; resulting UI items render to ratatui `TestBackend` frames whose exact contents are pinned.
+- **M1 (integration)** — `theus/tests/keyless.rs`, `#[ignore]`d by default, self-skips without `DSH_CHECKOUT`. Drives the **real** jsonrpc runtime from a harness checkout through the llm-replay overlay (mirrors `examples/jsonrpc-agent/tests/sdk.snapshot.ts` in the harness repo) and pins transcript, persisted JSONL, clean exit-0 shutdown. Run explicitly with `--include-ignored` when a checkout is available.
+- **M2/M3 (snapshots)** — `theus/tests/snapshots.rs`: a scripted fake runtime drives the real client + transport stack; resulting UI items render to ratatui `TestBackend` frames whose exact contents are pinned.
 
 No test tier needs a DeepSeek API key or network access; `cargo test --workspace` always runs the full keyless set.
 
 ## History/context worth knowing
 
-The harness repo previously shipped a TypeScript TUI (`@deepseek-ai/dsh-tui`), deleted 2026-08-04. tub is its deliberate replacement, satisfying four conditions the removal note set for reintroducing a terminal frontend (see `ARCHITECTURE.md` § "Mapping to the removal note's four conditions" for the full mapping): a named product, an explicit package boundary (this standalone repo, not the harness's TS `packages/` tree), a concrete interaction provider (SDK JSON-RPC, not ACP), and assembled lifecycle + transcript acceptance (the M1 test). The old TUI's proven UX choices (session identity always visible, elapsed timing on messages, workspace/branch shown beside the prompt, real-parser markdown — never regex) are carried forward deliberately, not re-derived.
+The harness repo previously shipped a TypeScript TUI (`@deepseek-ai/dsh-tui`), deleted 2026-08-04. theus is its deliberate replacement, satisfying four conditions the removal note set for reintroducing a terminal frontend (see `ARCHITECTURE.md` § "Mapping to the removal note's four conditions" for the full mapping): a named product, an explicit package boundary (this standalone repo, not the harness's TS `packages/` tree), a concrete interaction provider (SDK JSON-RPC, not ACP), and assembled lifecycle + transcript acceptance (the M1 test). The old TUI's proven UX choices (session identity always visible, elapsed timing on messages, workspace/branch shown beside the prompt, real-parser markdown — never regex) are carried forward deliberately, not re-derived.

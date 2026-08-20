@@ -1,4 +1,4 @@
-//! Command-line surface for tub.
+//! Command-line surface for theus.
 
 use std::path::PathBuf;
 
@@ -6,11 +6,11 @@ use clap::{Args, Parser, Subcommand};
 
 /// Interactive Rust terminal client for DeepSeek Harness.
 ///
-/// tub spawns a DeepSeek Harness SDK runtime as a subprocess, drives it over
+/// theus spawns a DeepSeek Harness SDK runtime as a subprocess, drives it over
 /// the JSON-RPC stdio protocol, and owns the runtime lifecycle: spawn ->
 /// initialize -> prompt -> collect-to-idle -> shutdown -> reap.
 #[derive(Debug, Parser)]
-#[command(name = "tub", version, about, long_about = None)]
+#[command(name = "theus", version, about, long_about = None)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Command>,
@@ -27,18 +27,18 @@ pub enum Command {
 /// Options shared by the headless runner and the TUI.
 #[derive(Debug, Clone, Args)]
 pub struct SharedArgs {
-    /// Path to a DeepSeek Harness checkout. When omitted, tub searches the
+    /// Path to a DeepSeek Harness checkout. When omitted, theus searches the
     /// current directory tree and common locations under the home directory.
     /// Src mode needs node_modules; lib mode needs the built lib. Env:
-    /// TUB_CHECKOUT, DSH_CHECKOUT.
-    #[arg(long, env = "TUB_CHECKOUT")]
+    /// THEUS_CHECKOUT, DSH_CHECKOUT.
+    #[arg(long, env = "THEUS_CHECKOUT")]
     pub checkout: Option<PathBuf>,
 
     /// The runtime cordis.yml path (positional argv[2] for the runtime; its
-    /// own DSH_CORDIS_CONFIG env wins when set). Default: TUB_CORDIS_CONFIG,
+    /// own DSH_CORDIS_CONFIG env wins when set). Default: THEUS_CORDIS_CONFIG,
     /// then DSH_CORDIS_CONFIG, ./cordis.yml, a file beside the binary, then
-    /// tub's embedded default.
-    #[arg(long, env = "TUB_CORDIS_CONFIG")]
+    /// theus's embedded default.
+    #[arg(long, env = "THEUS_CORDIS_CONFIG")]
     pub config: Option<PathBuf>,
 
     /// Runtime launch mode: 'src' boots the jsonrpc-demo bin through tsx,
@@ -47,20 +47,20 @@ pub struct SharedArgs {
     pub runtime_mode: Option<String>,
 
     /// Provider route for SDK-created agents.
-    #[arg(long, env = "TUB_PROVIDER", default_value = "deepseek-official")]
+    #[arg(long, env = "THEUS_PROVIDER", default_value = "deepseek-official")]
     pub provider: String,
 
     /// Model for SDK-created agents.
-    #[arg(long, env = "TUB_MODEL", default_value = "deepseek-v4-flash")]
+    #[arg(long, env = "THEUS_MODEL", default_value = "deepseek-v4-flash")]
     pub model: String,
 
     /// Maximum output tokens for each conversation-model request.
-    #[arg(long, env = "TUB_MAX_TOKENS")]
+    #[arg(long, env = "THEUS_MAX_TOKENS")]
     pub max_tokens: Option<u64>,
 
     /// Workspace directory recorded on every SDK-created session (default:
     /// the current directory).
-    #[arg(long, env = "TUB_CWD")]
+    #[arg(long, env = "THEUS_CWD")]
     pub cwd: Option<PathBuf>,
 }
 
@@ -95,20 +95,20 @@ pub struct RunArgs {
 }
 
 impl SharedArgs {
-    /// Build from environment variables alone (used when tub runs with no
+    /// Build from environment variables alone (used when theus runs with no
     /// subcommand, where clap never sees the flattened args).
     pub fn from_env() -> Self {
         let env_opt = |key: &str| std::env::var_os(key).map(|v| PathBuf::from(v));
         let env_u64 = |key: &str| std::env::var(key).ok().and_then(|v| v.parse().ok());
         Self {
-            checkout: env_opt("TUB_CHECKOUT"),
-            config: env_opt("TUB_CORDIS_CONFIG"),
+            checkout: env_opt("THEUS_CHECKOUT"),
+            config: env_opt("THEUS_CORDIS_CONFIG"),
             runtime_mode: std::env::var("DSH_EXAMPLE_MODE").ok(),
-            provider: std::env::var("TUB_PROVIDER")
+            provider: std::env::var("THEUS_PROVIDER")
                 .unwrap_or_else(|_| "deepseek-official".to_string()),
-            model: std::env::var("TUB_MODEL").unwrap_or_else(|_| "deepseek-v4-flash".to_string()),
-            max_tokens: env_u64("TUB_MAX_TOKENS"),
-            cwd: env_opt("TUB_CWD"),
+            model: std::env::var("THEUS_MODEL").unwrap_or_else(|_| "deepseek-v4-flash".to_string()),
+            max_tokens: env_u64("THEUS_MAX_TOKENS"),
+            cwd: env_opt("THEUS_CWD"),
         }
     }
 }

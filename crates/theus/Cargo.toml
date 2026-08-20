@@ -1,5 +1,5 @@
 [package]
-name = "tub"
+name = "theus"
 description = "Interactive Rust terminal UI (TUI) client for DeepSeek Harness"
 version.workspace = true
 edition.workspace = true
@@ -9,12 +9,12 @@ repository.workspace = true
 authors.workspace = true
 
 [[bin]]
-name = "tub"
+name = "theus"
 path = "src/main.rs"
 
 [[bin]]
-name = "tub-fake-runtime"
-path = "src/bin/tub-fake-runtime.rs"
+name = "theus-fake-runtime"
+path = "src/bin/theus-fake-runtime.rs"
 
 [dependencies]
 dsh-harness-client = { path = "../dsh-harness-client" }

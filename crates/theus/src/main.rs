@@ -1,13 +1,13 @@
-//! tub - an interactive Rust terminal client for DeepSeek Harness.
+//! theus - an interactive Rust terminal client for DeepSeek Harness.
 //!
 //! See README.md for the product story; ARCHITECTURE.md for the design.
 
 use std::process::ExitCode;
 
 use clap::Parser;
-use tub::app;
-use tub::cli::{Cli, Command, SharedArgs, TuiArgs};
-use tub::headless;
+use theus::app;
+use theus::cli::{Cli, Command, SharedArgs, TuiArgs};
+use theus::headless;
 
 #[tokio::main]
 async fn main() -> ExitCode {
@@ -26,7 +26,7 @@ async fn main() -> ExitCode {
     match outcome {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
-            eprintln!("tub: {error:#}");
+            eprintln!("theus: {error:#}");
             ExitCode::FAILURE
         }
     }

@@ -12,11 +12,11 @@ use dsh_harness_client::client::HarnessClientOptions;
 use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;
 use ratatui::Terminal;
-use tub::eventmap::{build_items, UiItem};
-use tub::ui::{self, OverlayView, UiState};
+use theus::eventmap::{build_items, UiItem};
+use theus::ui::{self, OverlayView, UiState};
 
 fn fake_bin() -> String {
-    env!("CARGO_BIN_EXE_tub-fake-runtime").to_string()
+    env!("CARGO_BIN_EXE_theus-fake-runtime").to_string()
 }
 
 fn env_with_path(mut env: HashMap<String, String>) -> HashMap<String, String> {

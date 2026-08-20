@@ -3,8 +3,8 @@
 //! built mode boots its built lib under plain Node. Mirrors
 //! '@deepseek-ai/dsh-loader-smoke' resolveExampleLaunch.
 //!
-//! Runtime-side config discovery (unchanged by tub): '$DSH_CORDIS_CONFIG' env
-//! first, else positional argv[2]; no default, no fallback. tub passes its
+//! Runtime-side config discovery (unchanged by theus): '$DSH_CORDIS_CONFIG' env
+//! first, else positional argv[2]; no default, no fallback. theus passes its
 //! config path positionally.
 
 use std::collections::HashSet;
@@ -133,14 +133,15 @@ fn command_node_version(command: &str) -> Option<NodeVersion> {
 }
 
 /// Resolve a supported Node executable. The shell's `node` wins when it is
-/// supported; otherwise tub searches installed NVM and Homebrew Node versions.
-/// `TUB_NODE` is an explicit override and is validated rather than silently
+/// supported; otherwise theus searches installed NVM and Homebrew Node versions.
+/// `THEUS_NODE` is an explicit override and is validated rather than silently
 /// falling back.
 pub fn node_command() -> Result<String, String> {
-    if let Some(explicit) = std::env::var_os("TUB_NODE") {
+    if let Some(explicit) = std::env::var_os("THEUS_NODE") {
         let explicit = explicit.to_string_lossy().to_string();
         return supported_node(&explicit).map(|_| explicit).ok_or_else(|| {
-            "TUB_NODE does not point to a supported Node runtime (need ^22.19 or >=24)".to_string()
+            "THEUS_NODE does not point to a supported Node runtime (need ^22.19 or >=24)"
+                .to_string()
         });
     }
 
@@ -183,7 +184,7 @@ pub fn node_command() -> Result<String, String> {
         .next()
         .map(|(_, command)| command)
         .ok_or_else(|| {
-            "no supported Node runtime found (need ^22.19 or >=24); install Node 24 or set TUB_NODE"
+            "no supported Node runtime found (need ^22.19 or >=24); install Node 24 or set THEUS_NODE"
                 .to_string()
         })
 }

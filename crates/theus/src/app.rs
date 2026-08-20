@@ -1369,7 +1369,7 @@ pub async fn run(args: TuiArgs) -> anyhow::Result<()> {
             let area = frame.area();
             let paragraph =
                 ratatui::widgets::Paragraph::new("starting DeepSeek Harness runtime...")
-                    .block(ratatui::widgets::Block::bordered().title(" tub "));
+                    .block(ratatui::widgets::Block::bordered().title(" theus "));
             frame.render_widget(paragraph, area);
         })?;
         let initialized = match client
@@ -1488,7 +1488,7 @@ async fn run_loop(
 
 async fn close_runtime(client: &mut HarnessClient) {
     if let Err(error) = client.close().await {
-        eprintln!("tub: runtime teardown: {error}");
+        eprintln!("theus: runtime teardown: {error}");
     }
 }
 

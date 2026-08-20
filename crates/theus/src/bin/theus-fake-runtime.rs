@@ -1,4 +1,4 @@
-//! Test-support binary for tub's snapshot tests: the scripted fake runtime
+//! Test-support binary for theus's snapshot tests: the scripted fake runtime
 //! from dsh-harness-client, so tests can drive a real client + transport
 //! stack against a deterministic peer.
 

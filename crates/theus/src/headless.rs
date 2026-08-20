@@ -1,6 +1,6 @@
-//! tub run: the headless single-turn runner (M1). Drives the REAL jsonrpc
+//! theus run: the headless single-turn runner (M1). Drives the REAL jsonrpc
 //! runtime through the owned receipt-to-idle interval and prints the turn
-//! live. Exit codes reflect tub's own transport health only - the wire has
+//! live. Exit codes reflect theus's own transport health only - the wire has
 //! no prompt-level status, so model outcomes are rendered, never exit codes.
 
 use std::collections::HashMap;
@@ -34,7 +34,7 @@ fn read_prompt(args: &RunArgs) -> anyhow::Result<String> {
 }
 
 /// Assemble the runtime launch spec: the resolved bin plus the config as
-/// positional argv[2], with the parent environment passed through (tub's
+/// positional argv[2], with the parent environment passed through (theus's
 /// credential policy) and mode-specific entries layered over it.
 fn build_launch(
     config: &RuntimeConfig,
@@ -255,7 +255,7 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
     });
     let session_id = harness.session(args.session.as_deref()).id;
     println!(
-        "-- tub - {} - {}/{} - {} --",
+        "-- theus - {} - {}/{} - {} --",
         session_id,
         config.provider,
         config.model,
@@ -284,12 +284,12 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
     };
     let close_result = harness.close().await;
     for violation in harness.client().stdout_violations() {
-        eprintln!("tub: stdout violation (stdout is reserved for JSON-RPC): {violation}");
+        eprintln!("theus: stdout violation (stdout is reserved for JSON-RPC): {violation}");
     }
     if let Err(error) = close_result {
-        eprintln!("tub: runtime teardown: {error}");
+        eprintln!("theus: runtime teardown: {error}");
     }
-    eprintln!("tub: turn took {:.1}s", started.elapsed().as_secs_f64());
+    eprintln!("theus: turn took {:.1}s", started.elapsed().as_secs_f64());
     outcome
 }
 

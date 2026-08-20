@@ -14,12 +14,12 @@ use std::time::Duration;
 
 use dsh_harness_client::client::{HarnessClient, HarnessClientOptions};
 use dsh_harness_client::protocol::{InitializeParams, ModelSelection};
+use theus::app::App;
+use theus::commands::SlashCommand;
 use tokio::sync::mpsc;
-use tub::app::App;
-use tub::commands::SlashCommand;
 
 fn fake_bin() -> String {
-    env!("CARGO_BIN_EXE_tub-fake-runtime").to_string()
+    env!("CARGO_BIN_EXE_theus-fake-runtime").to_string()
 }
 
 #[tokio::test]

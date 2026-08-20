@@ -34,7 +34,7 @@ pub struct InitializeParams {
 pub struct InitializeResult {
     #[serde(rename = "serverInfo")]
     pub server_info: ServerInfo,
-    /// Optional methods advertised by runtimes that implement tub's extended
+    /// Optional methods advertised by runtimes that implement theus's extended
     /// interactive-management protocol. An absent list means a legacy runtime.
     #[serde(default)]
     pub capabilities: Vec<String>,

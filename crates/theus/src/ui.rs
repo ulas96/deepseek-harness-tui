@@ -82,7 +82,7 @@ pub fn render(frame: &mut Frame, state: &UiState<'_>) {
         .block(
             Block::bordered()
                 .border_style(Style::default().fg(Color::DarkGray))
-                .title(" tub "),
+                .title(" theus "),
         )
         .style(Style::default().fg(Color::Reset));
     frame.render_widget(transcript, transcript_area);

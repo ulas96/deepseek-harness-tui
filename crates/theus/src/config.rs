@@ -1,4 +1,4 @@
-//! Resolution of tub's runtime configuration: checkout path, cordis.yml
+//! Resolution of theus's runtime configuration: checkout path, cordis.yml
 //! path, launch mode, route, and workspace — from CLI flags, environment
 //! variables, and checked-in defaults. All failures are loud: a typo'd
 //! checkout must not silently produce a broken spawn.
@@ -10,7 +10,7 @@ use dsh_harness_client::launch::{require_absolute, resolve_launch, RuntimeMode};
 
 use crate::cli::SharedArgs;
 
-/// tub's resolved runtime configuration.
+/// theus's resolved runtime configuration.
 #[derive(Debug, Clone)]
 pub struct RuntimeConfig {
     /// Absolute path to the DeepSeek Harness checkout.
@@ -72,7 +72,7 @@ fn resolve_checkout(shared: &SharedArgs, mode: RuntimeMode) -> Result<PathBuf, S
     let cwd = std::env::current_dir().map_err(|error| error.to_string())?;
     let home = std::env::var_os("HOME").map(PathBuf::from);
     discover_checkout(&cwd, home.as_deref(), mode).ok_or_else(|| {
-        "no DeepSeek Harness checkout found; pass --checkout or set TUB_CHECKOUT/DSH_CHECKOUT"
+        "no DeepSeek Harness checkout found; pass --checkout or set THEUS_CHECKOUT/DSH_CHECKOUT"
             .to_string()
     })
 }
@@ -120,14 +120,14 @@ fn checkout_supports_mode(checkout: &Path, mode: RuntimeMode) -> bool {
     }
 }
 
-/// The runtime cordis.yml: --config, TUB_CORDIS_CONFIG,
+/// The runtime cordis.yml: --config, THEUS_CORDIS_CONFIG,
 /// DSH_CORDIS_CONFIG, ./cordis.yml, the file shipped beside the binary, then
-/// tub's embedded default.
+/// theus's embedded default.
 fn resolve_config(shared: &SharedArgs) -> Result<PathBuf, String> {
     if let Some(path) = &shared.config {
         return require_absolute(path);
     }
-    if let Some(raw) = std::env::var_os("TUB_CORDIS_CONFIG") {
+    if let Some(raw) = std::env::var_os("THEUS_CORDIS_CONFIG") {
         return require_absolute(PathBuf::from(raw).as_path());
     }
     if let Some(raw) = std::env::var_os("DSH_CORDIS_CONFIG") {
@@ -157,7 +157,7 @@ fn cache_root() -> PathBuf {
         .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".cache")))
         .or_else(|| std::env::var_os("LOCALAPPDATA").map(PathBuf::from))
         .unwrap_or_else(std::env::temp_dir)
-        .join("tub")
+        .join("theus")
 }
 
 fn materialize_bundled_config(cache: &Path) -> Result<PathBuf, String> {

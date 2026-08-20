@@ -3,7 +3,7 @@
 //! mechanics as examples/jsonrpc-agent/tests/sdk.snapshot.ts - and asserts a
 //! clean transcript, the persisted JSONL session, and a clean exit-0
 //! shutdown. This is the removal note's 'assembled lifecycle and transcript
-//! acceptance' for the tub frontend.
+//! acceptance' for the theus frontend.
 //!
 //! Skips itself without DSH_CHECKOUT (repo convention: keyless tests never
 //! need a key or network; they need a checkout + pnpm install).
