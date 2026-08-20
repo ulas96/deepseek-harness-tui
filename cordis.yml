@@ -8,6 +8,15 @@
   config:
     maxTokensAsSuccess: !!js "process.env.DSH_MAX_TOKENS_AS_SUCCESS === undefined ? true : JSON.parse(process.env.DSH_MAX_TOKENS_AS_SUCCESS)"
 
+# User-plane provider profiles and credentials. Their defaults are
+# ~/.dsh/settings.yaml and ~/.dsh/.credentials.yaml; secrets are resolved per
+# request and never cross back over the JSON-RPC wire.
+- id: settings
+  name: '@deepseek-ai/dsh-settings-file'
+
+- id: credentials
+  name: '@deepseek-ai/dsh-credentials-local'
+
 # The DeepSeek adapter. Shipped default: full thinking at max effort on every
 # request. The model arrives per session over JSON-RPC, so it is not pinned here.
 - id: llm-deepseek
@@ -15,6 +24,11 @@
   config:
     thinking: enabled
     reasoningEffort: max
+
+# Multi-provider adapter mounted dormant. /provider activates catalog or
+# custom OpenAI-compatible routes by writing the settings namespace above.
+- id: llm-pi-ai
+  name: '@deepseek-ai/dsh-llm-pi-ai'
 
 # Managed child-process groups for the bash executor (spawn/kill/output plumbing).
 - id: subprocess
@@ -30,7 +44,8 @@
   name: '@deepseek-ai/dsh-agent-spine-demo'
   config:
     persona: !!js process.env.DSH_SYSTEM_PROMPT ?? 'You are a coding agent.'
-    workspaceContext: false
+    workspaceContext:
+      maxBytes: 65536
     skills:
       enabled: false
     toolBash:
@@ -43,6 +58,13 @@
     root: !!js process.env.DSH_SESSION_ROOT ?? './.sessions'
     # Snapshot runs read the raw JSONL back; production keeps zstd frames.
     compression: !!js "process.env.DSH_SNAPSHOT === undefined ? 'zstd' : 'none'"
+
+# Exact persisted reads and titles stay available without opening a search DB.
+- id: session-query
+  name: '@deepseek-ai/dsh-session-query-sqlite'
+  config:
+    path: ':memory:'
+    openAt: never
 
 - id: session-checkpoints
   name: '@deepseek-ai/dsh-session-checkpoint-policy'

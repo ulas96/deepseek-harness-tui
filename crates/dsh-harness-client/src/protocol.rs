@@ -1,5 +1,5 @@
-//! Named wire types for the DeepSeek Harness SDK runtime protocol: the three
-//! request/result pairs and the four server-to-client notification payloads
+//! Named wire types for the DeepSeek Harness SDK runtime protocol: lifecycle,
+//! prompt, model/provider management, resume, and notification payloads
 //! exchanged over the newline-delimited JSON-RPC stdio transport (the Rust
 //! port of '@deepseek-ai/dsh-sdk-protocol/types').
 
@@ -19,6 +19,12 @@ pub struct InitializeParams {
     pub cwd: String,
     pub provider: String,
     pub model: String,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        rename = "reasoningEffort"
+    )]
+    pub reasoning_effort: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none", rename = "maxTokens")]
     pub max_tokens: Option<u64>,
 }
@@ -28,6 +34,10 @@ pub struct InitializeParams {
 pub struct InitializeResult {
     #[serde(rename = "serverInfo")]
     pub server_info: ServerInfo,
+    /// Optional methods advertised by runtimes that implement tub's extended
+    /// interactive-management protocol. An absent list means a legacy runtime.
+    #[serde(default)]
+    pub capabilities: Vec<String>,
 }
 
 /// 'serverInfo.name' is the wire-stable 'deepseek-harness-sdk-runtime'.
@@ -54,6 +64,169 @@ pub struct SessionPromptParams {
 pub struct SessionPromptResult {
     #[serde(rename = "messageId")]
     pub message_id: String,
+}
+
+/// One selectable provider route and its currently registered model catalog.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProviderCatalogEntry {
+    pub provider: String,
+    #[serde(rename = "displayName")]
+    pub display_name: String,
+    /// Whether an adapter for the route is active now. Dormant catalog routes
+    /// can be activated through provider onboarding.
+    pub active: bool,
+    #[serde(default)]
+    pub declared: bool,
+    #[serde(default)]
+    pub models: Vec<ModelCatalogEntry>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// One model exposed by a provider adapter.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelCatalogEntry {
+    pub id: String,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning: Option<ModelReasoningInfo>,
+}
+
+/// Selectable reasoning effort metadata for one exact model route.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelReasoningInfo {
+    #[serde(default)]
+    pub efforts: Vec<ReasoningEffortInfo>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        rename = "defaultEffort"
+    )]
+    pub default_effort: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReasoningEffortInfo {
+    pub id: String,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelCatalogResult {
+    pub providers: Vec<ProviderCatalogEntry>,
+}
+
+/// Session-local route applied to the next model step.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModelSelection {
+    pub provider: String,
+    pub model: String,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        rename = "reasoningEffort"
+    )]
+    pub reasoning_effort: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SelectModelResult {
+    pub selected: ModelSelection,
+}
+
+/// Lightweight persisted conversation metadata scoped to the initialized cwd.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionListEntry {
+    #[serde(rename = "sessionId")]
+    pub session_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(rename = "createdAt")]
+    pub created_at: u64,
+    #[serde(rename = "lastActivityAt")]
+    pub last_activity_at: u64,
+    pub live: bool,
+    #[serde(default)]
+    pub unreadable: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionListResult {
+    pub sessions: Vec<SessionListEntry>,
+}
+
+/// Complete history and routing state returned when a conversation is adopted.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionResumeResult {
+    #[serde(rename = "sessionId")]
+    pub session_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub events: Vec<SessionEvent>,
+    pub selection: ModelSelection,
+    pub status: AgentStatus,
+    pub routable: bool,
+}
+
+/// Draft provider profile used by discovery and durable add operations.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProviderDraft {
+    pub provider: String,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        rename = "displayName"
+    )]
+    pub display_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "baseURL")]
+    pub base_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        rename = "credentialRef"
+    )]
+    pub credential_ref: Option<String>,
+    /// A one-shot secret. Servers must never echo or log this field.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        rename = "credentialValue"
+    )]
+    pub credential_value: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty", rename = "modelIds")]
+    pub model_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiscoveredModel {
+    pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        rename = "contextWindow"
+    )]
+    pub context_window: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "maxTokens")]
+    pub max_tokens: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProviderDiscoverResult {
+    pub models: Vec<DiscoveredModel>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProviderAddResult {
+    pub provider: String,
 }
 
 // ---------------------------------------------------------------------------

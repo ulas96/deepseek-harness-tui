@@ -13,7 +13,7 @@ use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;
 use ratatui::Terminal;
 use tub::eventmap::{build_items, UiItem};
-use tub::ui::{self, UiState};
+use tub::ui::{self, OverlayView, UiState};
 
 fn fake_bin() -> String {
     env!("CARGO_BIN_EXE_tub-fake-runtime").to_string()
@@ -133,7 +133,7 @@ fn render_items(items: &[UiItem], width: u16, height: u16) -> Buffer {
         items,
         status: "idle",
         session_id: "tui-1",
-        route: "deepseek-official/deepseek-v4-flash",
+        route: "deepseek-official/deepseek-v4-flash".to_string(),
         cwd: "/work",
         branch: Some("main"),
         input_lines: &[],
@@ -144,6 +144,35 @@ fn render_items(items: &[UiItem], width: u16, height: u16) -> Buffer {
         error: None,
         violations: 0,
         elapsed: Duration::from_secs(3),
+        overlay: None,
+    };
+    terminal
+        .draw(|frame| ui::render(frame, &state))
+        .expect("frame renders");
+    terminal.backend().buffer().clone()
+}
+
+/// Render a bare overlay (no transcript items) over a fixed-size terminal.
+fn render_overlay_frame(overlay: OverlayView, width: u16, height: u16) -> Buffer {
+    let backend = TestBackend::new(width, height);
+    let mut terminal = Terminal::new(backend).expect("terminal over test backend");
+    let items: Vec<UiItem> = Vec::new();
+    let state = UiState {
+        items: &items,
+        status: "idle",
+        session_id: "tui-1",
+        route: "deepseek-official/deepseek-v4-flash".to_string(),
+        cwd: "/work",
+        branch: Some("main"),
+        input_lines: &[],
+        cursor: (0, 0),
+        scroll: 0,
+        queued: false,
+        confirm_quit: false,
+        error: None,
+        violations: 0,
+        elapsed: Duration::from_secs(3),
+        overlay: Some(overlay),
     };
     terminal
         .draw(|frame| ui::render(frame, &state))
@@ -274,4 +303,66 @@ fn scroll_window_clamps() {
     // Pinned to the bottom: the last line is visible, the first is not.
     assert!(frame.contains("line 59"));
     assert!(!frame.contains("line 0"));
+}
+
+#[test]
+fn overlay_picker_scrolls_to_keep_selection_visible() {
+    // More items than a 24-row terminal's popup can show at once; the
+    // highlighted selection must stay on-screen and the hint must say so.
+    let lines: Vec<String> = (0..40).map(|i| format!("item {i}")).collect();
+    let overlay = OverlayView {
+        title: "Choose model".to_string(),
+        lines,
+        selected: Some(39),
+        hint: "up/down move".to_string(),
+        cursor: None,
+    };
+    let buffer = render_overlay_frame(overlay, 80, 24);
+    let frame = frame_string(&buffer);
+    assert!(frame.contains("item 39"), "the selection scrolls into view");
+    assert!(!frame.contains("item 0"), "items far above it scroll out");
+    assert!(frame.contains("of 40"), "hint reports how many items exist");
+}
+
+#[test]
+fn overlay_form_cursor_tracks_the_active_field() {
+    let route_line = "Route: ".to_string();
+    let name_line = "Display name: hi".to_string();
+    let name_len = name_line.chars().count();
+    let overlay = OverlayView {
+        title: "Add provider".to_string(),
+        lines: vec![route_line, name_line],
+        selected: Some(1),
+        hint: "type to edit".to_string(),
+        cursor: Some((1, name_len)),
+    };
+    let backend = TestBackend::new(80, 24);
+    let mut terminal = Terminal::new(backend).expect("terminal over test backend");
+    let items: Vec<UiItem> = Vec::new();
+    let state = UiState {
+        items: &items,
+        status: "idle",
+        session_id: "tui-1",
+        route: "deepseek-official/deepseek-v4-flash".to_string(),
+        cwd: "/work",
+        branch: Some("main"),
+        input_lines: &[],
+        cursor: (0, 0),
+        scroll: 0,
+        queued: false,
+        confirm_quit: false,
+        error: None,
+        violations: 0,
+        elapsed: Duration::from_secs(3),
+        overlay: Some(overlay),
+    };
+    terminal
+        .draw(|frame| ui::render(frame, &state))
+        .expect("frame renders");
+    // Pinned: for an 80x24 frame the popup lands at (8, 9) sized 64x5, so the
+    // caret on the second (selected) field sits at its text's end, one row
+    // below the field above it — not at the unrelated input-pane cursor.
+    assert_eq!(name_len, 16);
+    let cursor = terminal.get_cursor_position().expect("cursor position set");
+    assert_eq!(cursor, ratatui::layout::Position { x: 25, y: 11 });
 }

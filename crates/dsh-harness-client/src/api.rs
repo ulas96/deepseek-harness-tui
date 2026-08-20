@@ -180,6 +180,7 @@ impl DeepSeekHarness {
                 cwd: self.cwd.to_string_lossy().to_string(),
                 provider: self.provider.clone(),
                 model: self.model.clone(),
+                reasoning_effort: None,
                 max_tokens: self.max_tokens,
             };
             self.client.initialize(params).await

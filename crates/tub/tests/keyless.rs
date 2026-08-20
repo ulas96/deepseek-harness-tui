@@ -13,9 +13,10 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use dsh_harness_client::api::{DeepSeekHarness, DeepSeekHarnessOptions, PromptInput, RunOptions};
+use dsh_harness_client::client::HarnessClient;
 use dsh_harness_client::client::HarnessClientOptions;
 use dsh_harness_client::launch::{resolve_launch, RuntimeMode};
-use dsh_harness_client::protocol::AgentStatus;
+use dsh_harness_client::protocol::{AgentStatus, InitializeParams, ModelSelection, ProviderDraft};
 
 const SCENARIO_PROMPT: &str = "Reply with exactly: SDK snapshot OK";
 const SCENARIO_SESSION: &str = "sdk-snapshot-text";
@@ -157,6 +158,97 @@ async fn replays_text_turn_through_real_runtime() {
         types.iter().any(|t| t == "assistant/message"),
         "log carries the assistant message; types: {types:?}"
     );
+}
+
+#[tokio::test]
+#[ignore = "requires a DeepSeek Harness checkout (DSH_CHECKOUT) with pnpm install"]
+async fn management_protocol_works_with_bundled_composition() {
+    let Some(checkout) = checkout() else { return };
+    let temp = tempfile::tempdir().expect("tempdir");
+    let cwd = temp.path().join("workspace");
+    let dsh_home = temp.path().join("dsh-home");
+    let sessions = temp.path().join("sessions");
+    std::fs::create_dir_all(&cwd).unwrap();
+    std::fs::create_dir_all(&dsh_home).unwrap();
+    std::fs::create_dir_all(&sessions).unwrap();
+
+    let launch = resolve_launch(&checkout, runtime_mode()).expect("launch resolves");
+    let config = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../cordis.yml");
+    let mut env: HashMap<String, String> = std::env::vars().collect();
+    for (key, value) in launch.env {
+        env.insert(key, value);
+    }
+    env.insert("DSH_CORDIS_CONFIG".into(), config.to_string_lossy().into());
+    env.insert("DSH_HOME".into(), dsh_home.to_string_lossy().into());
+    env.insert("DSH_SESSION_ROOT".into(), sessions.to_string_lossy().into());
+    env.insert("DSH_CWD".into(), cwd.to_string_lossy().into());
+
+    let mut client = HarnessClient::new(HarnessClientOptions {
+        command: launch.command,
+        args: launch.args,
+        cwd: Some(cwd.clone()),
+        env: Some(env),
+        request_timeout_ms: Some(30_000),
+        shutdown_timeout_ms: 10_000,
+        dispose_eof_grace_ms: 10_000,
+        dispose_grace_ms: 5_000,
+    });
+    let initialized = client
+        .initialize(InitializeParams {
+            cwd: cwd.to_string_lossy().into(),
+            provider: "deepseek-official".into(),
+            model: "deepseek-v4-flash".into(),
+            reasoning_effort: None,
+            max_tokens: None,
+        })
+        .await
+        .expect("initialize");
+    assert!(initialized
+        .capabilities
+        .iter()
+        .any(|method| method == "session/resume"));
+
+    let catalog = client.model_catalog().await.expect("model catalog");
+    assert!(catalog.providers.iter().any(|provider| {
+        provider.provider == "deepseek-official" && provider.active && !provider.models.is_empty()
+    }));
+    client
+        .select_model(
+            "pending-session",
+            &ModelSelection {
+                provider: "deepseek-official".into(),
+                model: "deepseek-v4-flash".into(),
+                reasoning_effort: Some("max".into()),
+            },
+        )
+        .await
+        .expect("pending session model selection");
+
+    let draft = ProviderDraft {
+        provider: "openai".into(),
+        display_name: None,
+        base_url: None,
+        api: None,
+        credential_ref: None,
+        credential_value: None,
+        model_ids: Vec::new(),
+    };
+    assert!(!client
+        .discover_provider(&draft)
+        .await
+        .expect("catalog discovery")
+        .models
+        .is_empty());
+    client
+        .add_provider(&draft)
+        .await
+        .expect("persist catalog provider");
+    let catalog = client.model_catalog().await.expect("updated model catalog");
+    assert!(catalog
+        .providers
+        .iter()
+        .any(|provider| provider.provider == "openai" && provider.active));
+    client.close().await.expect("clean close");
 }
 
 fn walk_jsonl(root: &std::path::Path) -> Vec<PathBuf> {

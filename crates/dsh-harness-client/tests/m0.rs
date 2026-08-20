@@ -85,6 +85,7 @@ async fn handshake_prompt_and_fan_out() {
             cwd: "/tmp".to_string(),
             provider: "deepseek-official".to_string(),
             model: "deepseek-v4-flash".to_string(),
+            reasoning_effort: None,
             max_tokens: None,
         })
         .await
@@ -153,6 +154,7 @@ async fn wire_error_maps_code_and_data() {
             cwd: "/tmp".to_string(),
             provider: "nope".to_string(),
             model: "x".to_string(),
+            reasoning_effort: None,
             max_tokens: None,
         })
         .await
@@ -206,6 +208,7 @@ async fn request_timeout_is_an_abandonment() {
             cwd: "/tmp".to_string(),
             provider: "deepseek-official".to_string(),
             model: "x".to_string(),
+            reasoning_effort: None,
             max_tokens: None,
         })
         .await
@@ -332,6 +335,7 @@ async fn transport_death_fails_pending_with_stderr_tail() {
             cwd: "/tmp".to_string(),
             provider: "deepseek-official".to_string(),
             model: "x".to_string(),
+            reasoning_effort: None,
             max_tokens: None,
         })
         .await
@@ -373,6 +377,7 @@ async fn stdout_violations_are_recorded() {
             cwd: "/tmp".to_string(),
             provider: "deepseek-official".to_string(),
             model: "x".to_string(),
+            reasoning_effort: None,
             max_tokens: None,
         })
         .await
@@ -390,4 +395,136 @@ async fn normalize_input_string_becomes_text_block() {
     let blocks = normalize_input(PromptInput::Text("hello".to_string()));
     assert_eq!(blocks.len(), 1);
     assert_eq!(blocks[0].as_text(), Some("hello"));
+}
+
+#[tokio::test]
+async fn management_methods_are_typed_and_validate_results() {
+    use dsh_harness_client::protocol::{ModelSelection, ProviderDraft};
+
+    let script = json!({
+        "initialize": [{ "result": {
+            "serverInfo": { "name": "deepseek-harness-sdk-runtime", "version": "0.0.1" },
+            "capabilities": ["model/catalog", "session/resume"]
+        }}],
+        "model/catalog": [{ "result": { "providers": [{
+            "provider": "route", "displayName": "Route", "active": true,
+            "declared": false, "models": [{ "id": "model", "name": "Model" }]
+        }] }}],
+        "session/select-model": [{ "result": { "selected": {
+            "provider": "route", "model": "model", "reasoningEffort": "high"
+        } }}],
+        "session/list": [{ "result": { "sessions": [{
+            "sessionId": "s1", "title": "Prior", "createdAt": 1,
+            "lastActivityAt": 2, "live": false, "unreadable": false
+        }] }}],
+        "session/resume": [{ "result": {
+            "sessionId": "s1", "title": "Prior", "events": [],
+            "selection": { "provider": "route", "model": "model" },
+            "status": "idle", "routable": true
+        }}],
+        "provider/discover": [{ "result": { "models": [{ "id": "found" }] }}],
+        "provider/add": [{ "result": { "provider": "route-2" } }],
+        "shutdown": [{ "result": {} }]
+    });
+    let mut client = client(HashMap::from([(
+        "FAKE_RUNTIME_SCRIPT".to_string(),
+        script.to_string(),
+    )]));
+    let initialized = client
+        .initialize(InitializeParams {
+            cwd: "/tmp".into(),
+            provider: "route".into(),
+            model: "model".into(),
+            reasoning_effort: None,
+            max_tokens: None,
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        initialized.capabilities,
+        ["model/catalog", "session/resume"]
+    );
+    assert_eq!(
+        client.model_catalog().await.unwrap().providers[0].models[0].id,
+        "model"
+    );
+    let selection = ModelSelection {
+        provider: "route".into(),
+        model: "model".into(),
+        reasoning_effort: Some("high".into()),
+    };
+    assert_eq!(
+        client
+            .select_model("s1", &selection)
+            .await
+            .unwrap()
+            .selected,
+        selection
+    );
+    assert_eq!(
+        client.list_sessions().await.unwrap().sessions[0]
+            .title
+            .as_deref(),
+        Some("Prior")
+    );
+    assert!(client.resume_session("s1").await.unwrap().routable);
+    let draft = ProviderDraft {
+        provider: "route-2".into(),
+        display_name: None,
+        base_url: None,
+        api: None,
+        credential_ref: None,
+        credential_value: None,
+        model_ids: Vec::new(),
+    };
+    assert_eq!(
+        client.discover_provider(&draft).await.unwrap().models[0].id,
+        "found"
+    );
+    assert_eq!(
+        client.add_provider(&draft).await.unwrap().provider,
+        "route-2"
+    );
+    client.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn management_methods_are_bounded_by_a_default_timeout() {
+    // A hung runtime response to a management RPC (e.g. provider/discover
+    // probing an unreachable custom endpoint) must not block the caller
+    // forever the way a hung session/prompt legitimately could.
+    let script = json!({
+        "initialize": [{ "result": { "serverInfo": { "name": "deepseek-harness-sdk-runtime", "version": "0.0.1" } } }],
+        "model/catalog": [{ "hang": true }]
+    });
+    let mut client = HarnessClient::new(HarnessClientOptions {
+        command: fake_bin(),
+        args: vec![],
+        cwd: None,
+        env: Some(env_with_path(HashMap::from([(
+            "FAKE_RUNTIME_SCRIPT".to_string(),
+            script.to_string(),
+        )]))),
+        request_timeout_ms: Some(3_000),
+        shutdown_timeout_ms: 1_000,
+        dispose_eof_grace_ms: 1_000,
+        dispose_grace_ms: 1_000,
+    });
+    client
+        .initialize(InitializeParams {
+            cwd: "/tmp".to_string(),
+            provider: "deepseek-official".to_string(),
+            model: "x".to_string(),
+            reasoning_effort: None,
+            max_tokens: None,
+        })
+        .await
+        .unwrap();
+    let start = std::time::Instant::now();
+    let error = client.model_catalog().await.unwrap_err();
+    assert!(start.elapsed() < std::time::Duration::from_secs(6));
+    match error {
+        Error::RequestTimeout { method, .. } => assert_eq!(method, "model/catalog"),
+        other => panic!("expected a request timeout, got {other:?}"),
+    }
 }

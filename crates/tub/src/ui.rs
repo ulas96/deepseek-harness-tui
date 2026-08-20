@@ -12,12 +12,23 @@ use unicode_width::UnicodeWidthStr;
 use crate::eventmap::{SubagentState, ToolState, UiItem};
 use crate::markdown::markdown_text;
 
+/// Owned presentation of an interactive command picker/form.
+pub struct OverlayView {
+    pub title: String,
+    pub lines: Vec<String>,
+    pub selected: Option<usize>,
+    pub hint: String,
+    /// Text-entry caret as (index into `lines`, column within that line).
+    /// `None` for overlays with no free-text field (pickers, confirmations).
+    pub cursor: Option<(usize, usize)>,
+}
+
 /// Everything the renderer needs, borrowed from the app state.
 pub struct UiState<'a> {
     pub items: &'a [UiItem],
     pub status: &'a str,
     pub session_id: &'a str,
-    pub route: &'a str,
+    pub route: String,
     pub cwd: &'a str,
     pub branch: Option<&'a str>,
     pub input_lines: &'a [String],
@@ -29,6 +40,7 @@ pub struct UiState<'a> {
     pub error: Option<&'a str>,
     pub violations: usize,
     pub elapsed: Duration,
+    pub overlay: Option<OverlayView>,
 }
 
 /// Render the whole frame.
@@ -113,10 +125,81 @@ pub fn render(frame: &mut Frame, state: &UiState<'_>) {
             .title(" prompt "),
     );
     frame.render_widget(input, input_area);
-    frame.set_cursor_position(Position {
-        x: input_area.x + 1 + state.cursor.0,
-        y: input_area.y + 1 + state.cursor.1,
-    });
+    if let Some(overlay) = &state.overlay {
+        if let Some(cursor) = render_overlay(frame, area, overlay) {
+            frame.set_cursor_position(cursor);
+        }
+    } else {
+        frame.set_cursor_position(Position {
+            x: input_area.x + 1 + state.cursor.0,
+            y: input_area.y + 1 + state.cursor.1,
+        });
+    }
+}
+
+/// Render a picker/form popup, windowed around the current selection so it
+/// never scrolls off-screen with no feedback. Returns the terminal cursor
+/// position for the overlay's text-entry caret, if it has one and it's
+/// currently within the visible window.
+fn render_overlay(frame: &mut Frame, area: Rect, overlay: &OverlayView) -> Option<Position> {
+    let width = area.width.saturating_mul(4) / 5;
+    let content_height = overlay.lines.len().saturating_add(3) as u16;
+    let height = content_height.min(area.height.saturating_sub(2)).max(5);
+    let popup = Rect {
+        x: area.x + area.width.saturating_sub(width) / 2,
+        y: area.y + area.height.saturating_sub(height) / 2,
+        width,
+        height,
+    };
+    frame.render_widget(Clear, popup);
+
+    // Inner rows available for `overlay.lines`: the block's inner height
+    // (popup height minus its top/bottom border) minus one row for the hint.
+    let inner_height = height.saturating_sub(2) as usize;
+    let visible = inner_height.saturating_sub(1).max(1);
+    let total = overlay.lines.len();
+    let start = if total <= visible {
+        0
+    } else {
+        let selected = overlay.selected.unwrap_or(0);
+        selected
+            .saturating_sub(visible.saturating_sub(1))
+            .min(total - visible)
+    };
+    let end = (start + visible).min(total);
+
+    let mut lines = Vec::with_capacity(end - start + 1);
+    for (offset, line) in overlay.lines[start..end].iter().enumerate() {
+        let index = start + offset;
+        let style = if overlay.selected == Some(index) {
+            Style::default().fg(Color::Black).bg(Color::Cyan).bold()
+        } else {
+            Style::default()
+        };
+        lines.push(Line::from(Span::styled(line.clone(), style)));
+    }
+    let hint = if total > visible {
+        format!("{} · {}-{} of {total}", overlay.hint, start + 1, end)
+    } else {
+        overlay.hint.clone()
+    };
+    lines.push(Line::from(Span::styled(
+        hint,
+        Style::default().fg(Color::DarkGray),
+    )));
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(Block::bordered().title(format!(" {} ", overlay.title)))
+            .wrap(Wrap { trim: false }),
+        popup,
+    );
+
+    overlay.cursor.and_then(|(row, col)| {
+        (start..end).contains(&row).then(|| Position {
+            x: popup.x + 1 + col as u16,
+            y: popup.y + 1 + (row - start) as u16,
+        })
+    })
 }
 
 /// Append the wrapped, styled lines of one transcript item.

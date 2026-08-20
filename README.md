@@ -35,7 +35,7 @@ tub: turn took 2.3s
 
 The interactive TUI renders the same turn live: streamed assistant text (markdown once committed), tool cards with
 elapsed timing, fs diff cards, subagent cards, todo snapshots, a status bar carrying session id + running/idle +
-provider/model + workspace/branch, scrollback, and multiple sessions on one connection.
+provider/model/effort + workspace/branch, scrollback, and multiple sessions on one connection.
 
 ## Prerequisites
 
@@ -93,6 +93,23 @@ While a turn is running, Ctrl+C asks for confirmation first: quitting abandons t
 runtime - the wire has **no mid-turn cancel**. A prompt typed while the agent is running is queued and sent when the
 agent next idles (shown as a [+1 queued] badge).
 
+### Slash commands
+
+| Command | Action |
+|---|---|
+| `/model [provider/model]` | choose a model, or select an exact route directly |
+| `/effort [default\|id]` | choose the reasoning effort for the active session |
+| `/provider [route]` | choose a provider; dormant routes open onboarding |
+| `/provider add` | discover and save a catalog or custom OpenAI-compatible provider |
+| `/resume [session-id]` | reopen a previous root conversation from this exact workspace |
+| `/init` | ask the agent to inspect the repo and create/update root `AGENTS.md` only |
+| `//text` | send literal `/text` to the model instead of invoking a command |
+
+Pickers use Up/Down, Enter, and Esc. Provider onboarding collects a route, optional display name, optional base URL,
+protocol, credential reference, and masked key; it discovers models before saving. Profiles are stored in
+`~/.dsh/settings.yaml`, while supplied keys go to the owner-only `~/.dsh/.credentials.yaml` credential store.
+Model and effort changes are session-local and take effect at the next model step without discarding history.
+
 ## Keyless testing
 
 No key or network needed. Unit + fake-runtime tests always run:
@@ -115,7 +132,8 @@ TestBackend frames (streaming text, tool cards with timing, diff cards, subagent
 ## Known limitations
 
 - **No approval/permission dialogs** - the SDK wire does not carry approval requests; there is nothing to render.
-- **No session resume/listing** - SDK sessions live until process shutdown; rehydration from the runtime's JSONL is future work.
+- **Provider profiles are add-only in v1** - `/provider` can add catalog and custom OpenAI-compatible routes, but editing
+  and removing existing profiles still belongs to the Harness settings surface.
 - **No prompt-level status** - the wire has no per-prompt result; model errors and token-limit outcomes are rendered
   from the event stream, and tub's exit codes reflect transport health only.
 - **stdout is the protocol** - the runtime's stdout carries only JSON-RPC frames. tub fails loudly on non-JSON stdout lines.

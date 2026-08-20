@@ -6,6 +6,7 @@
 
 pub mod app;
 pub mod cli;
+pub mod commands;
 pub mod config;
 pub mod eventmap;
 pub mod headless;
